@@ -1,0 +1,20 @@
+GREEDY:
+  MATCH: ROUTINE
+  REMATCH:
+    0: fail
+    rematch last:
+      ROUTINE?good:fail
+    else:
+      pop
+      <min: rematch self
+      good
+  ROUTINE:
+    while <max
+      match sub:
+        continue
+      loop:
+        >=min: good
+        0: fail
+        rematch last: continue outer
+        pop
+    good
