@@ -9,8 +9,7 @@ from urllib.request import urlopen
 
 ### CONFIGURATION ###
 courses = ["DM564","DM563","DM507"]
-team = "H9" # "*" for 
-compactmode = True
+team = "H9" # "*" for all
 ### END CONFIGURATION ###
 
 # Globals
