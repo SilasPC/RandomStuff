@@ -1,99 +1,136 @@
 #!/usr/bin/python3
 import re
-import pprint
 import sys
 from datetime import *
 from urllib.request import urlopen
 
-pprint = pprint.PrettyPrinter(indent=4).pprint
+# Script to fetch and print SDU schedule
+# For usage, see bottom of file
 
-# Own courses go here
-own = ["DM564","DM563","DM507"]
-team = "H9"
+### CONFIGURATION ###
+courses = ["DM564","DM563","DM507"]
+team = "H9" # "*" for 
+compactmode = True
+### END CONFIGURATION ###
 
-# Other courses to follow with low priority
-courses = [
-    #"DM548-IEL", # sys prog
-    #"DM572-IEL", # cybersikkerhed
-    #"DM861-IEL", # concurrency theory
-    #"DM817-IEL"  # network progr
-]
-courses += [("%s:"+team+"-IEL") % (x,) for x in own]
+# Globals
+otherWeek = False
+remarks = set()
+
+# Preformating
+courses += [("%s:"+team+"-IEL") % (x,) for x in courses]
 courses = ",%20".join(courses)
 
-compactmode = True
-showSF = True
-nextweek = False
-
 def main():
-    url = "https://natfak.sdu.dk/mitskema/jsdata.php?periode=e2020&courses="+courses
-    #print(url)
+    wn, yr, period = getWeekData()
+    url = "https://natfak.sdu.dk/mitskema/jsdata.php?periode="+period+"&courses="+courses
     page = urlopen(url)
-    wn = int((datetime.today()+timedelta(days=2)).strftime("%V"))
-    if len(sys.argv) > 1:
-        wn += 1
-        nextweek = True
-    obj = strip(page.read(),wn)
+    obj = extractObj(page.read(), wn, yr)
     obj = {day: priday(times) for day,times in obj.items()}
     print("Schedule week "+str(wn))
     printschedule(obj)
+    global remarks
+    for remark in remarks:
+        print(remark)
 
+def getWeekData():
+    """
+    Returns in order:
+     - weeknumber (from sysargs)
+     - year
+     - period tag ((e|f)\d{4})
+    """
+    now = datetime.today()+timedelta(days=2)
+    if len(sys.argv) > 1:
+        argre = re.compile("(\\+|-)?(\\d*)")
+        match = argre.match(sys.argv[1])
+        if match is not None:
+            arg = sys.argv[1]
+            if match.group(2) == "":
+                arg += '1'
+            offset = eval(arg)
+            global otherWeek
+            otherWeek = (offset != 0)
+            now += timedelta(weeks=offset)
+    wn = int(now.strftime("%V"))
+    yr = now.strftime("%Y")
+    tag = None
+    if wn < 30:
+        tag = "f"
+    else:
+        tag = "e"
+    return wn, int(yr), tag + now.strftime("%Y")
 
-def strip(cnt,wk):
+def extractObj(cnt,wk,yr):
+    """
+    Isolate js object from weeknumber and year,
+    pythonize and evaluate
+    """
     cnt = str(cnt)
     i = None
     try:
-        i   = cnt.index("weekList['2020"+str(wk)+"']")
+        i = cnt.index("weekList['{}{:02d}']".format(yr,wk))
     except:
-        return {}
-    j   = cnt.index("}\\n",i)
+        return {} # week not found
+    j   = cnt.index("}\\n",i) # index for end of object
     fmt = cnt[i+20:j+1].replace("\\t","")
     fmt = fmt.replace("\\n","")
     fmt = re.sub(",\\s*}","}",fmt)
     return eval(fmt)
 
 def priday(day):
-    return {time: course for time,courses in day.items() for course in [pri(courses)] if course != None}
+    ret = {}
+    for time,courses in day.items():
+        course = extractCourse(courses)
+        if course is not None:
+            ret[time] = course
+    return ret
 
-def pri(l):
-    owncl = [x for x in l if x[0] in own and (showSF or x[4] != "SF")]
-    ownc = (x for x in owncl[-1:])
-    other = (x for x in l if x[0] not in own and x[2] == 'F')
-    course = next(ownc, next(other, None))
-    #if len(owncl) > 1:
-    #    print("Multiple courses:")
-    #    print(owncl)
-    if course == None:
+def extractCourse(crs):
+    """
+    Extract first course and return
+     - [courseId, room, tag]
+    """
+
+    # Sort out wrong teams
+    if team != "*":
+        crs = [c for c in crs if c[3] == team or c[3] == ""]
+    
+    if len(crs) == 0:
         return None
-    room = course[1]
-    if course[4] == "Online" or room[0] == "*":
+    elif len(crs) > 1:
+        global remarks
+        remarks.add("Warning, hidden courses due to collision, check online schedule")
+    
+    [courseId,room,tag,cteam,note] = crs[0]
+    if note == "Online" or room[0] == "*":
+        # * means '*odense lokalitet aftales ..'
         room = "*"
-    if course[4] == "SF":
-        course[2] = "SF"
-    if room == "IMADA ComputerLab":
-        room = "LAB"
-    return [course[0],room,course[2]]
+    if note == "SF":
+        tag = "SF"
+    
+    room = room[-4:] # Limit room name length
+    
+    return [courseId, room, tag]
 
 def printschedule(s):
     last = ["$"] * 5
-    if compactmode:
-        header = ['']+['-'*13]*5+['']
-        day = datetime.today().weekday()
-        if day < 5 and not nextweek:
-            header[day+1] = '----Today----'
-        #print(("   +"+"%s+"*5)%tuple(["-"*13]*5))
-        print('   '+'+'.join(header))
-    for time in (str(x) for x in [8,9,10,11,12,13,14,15,16,17]):
+    header = ['']+['-'*13]*5+['']
+    day = datetime.today().weekday()
+    if day < 5 and not otherWeek:
+        header[day+1] = '----Today----'
+    print('   '+'+'.join(header))
+    for time in (str(x) for x in range(8,18)):
         sep = ["-" * 13] * 5
         fargs = [""] * 5 + [str(time)]
-        for i,si in ((x,str(x+1)) for x in [0,1,2,3,4]):
+        for i,si in ((x,str(x+1)) for x in range(5)):
             if si in s:
                 cnt = ""
                 if time in s[si]:
                     cnt = "{0:5s} {1:4s} {2:2s}".format(*s[si][time])
                 if cnt == last[i] and cnt != "":
                     sep[i] = " " * 13
-                    if compactmode and cnt != " " * 13:
+                    if cnt != " " * 13:
                         fargs[i] = "^ ^ ^"
                 else:
                     sep[i] = "-" * 13
@@ -101,29 +138,22 @@ def printschedule(s):
                 last[i] = cnt
             else:
                 fargs[i] = ""
-        if not compactmode:
-            print("   +%s+%s+%s+%s+%s+" % tuple(sep))
         print("{5:3s}|{0:13s}|{1:13s}|{2:13s}|{3:13s}|{4:13s}|".format(*fargs))
     print("   +---Monday----+---Tuesday---+--Wednesday--+--Thursday---+---Friday----+")
 
-"""
-def getrss():
-    page = urlopen("https://e-learn.sdu.dk/webapps/itSS-RSSfeed-bb_bb60/rss.jsp?user=silch20&hash=7f5865811df2efed4a306e6de38d720d")
-    arr = []
-    rgx = re.compile("<item .*>[\\s\\S]*?<title>(.*)</title>[\\s\\S]*?<description><!\\[CDATA\\[(.*)\\]\\]></description>[\\s\\S]*?(<link>.*</link>)")
-    for m in rgx.finditer(str(page.read())):
-        arr.append((
-            m.group(1)
-                .replace("\\xc5","Å")
-                .replace("\\xf8","ø"),
-            m.group(2)
-                .replace("&nbsp"," ")
-                .replace("&oslash;","ø")
-                .replace("&aring;","å")
-                .replace("\\n","\n")
-        ))
-    return arr
-"""
-
 main()
 
+"""
+How to use:
+
+ - Install dependencies
+ - Configure (see top of file)
+ - Execute from terminal, optionally with an argument
+
+Optional argument:
+ - "-n"     gives n'th previous week
+ - "+n"     gives n'th next week
+ - "+"      same as '+1'
+ - "-"      same as '-1'
+
+"""
