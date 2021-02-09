@@ -170,10 +170,10 @@ if __name__ == '__main__':
             data = unnoise(data)
 
         if info['encryption']:
-            if not args.password:
-                args.password = raw_input('Password: ')
             n, f = info['encryption']
             log("Encryption: %s" % n)
+            if not args.password:
+                args.password = raw_input('Password: ')
             data = f(data, args.password)
             if data is None:
                 die("Decryption failed")

@@ -38,9 +38,9 @@ def bytesToStr(n):
     if n < 1e3:
         return '%d b' % n
     if n < 1e6:
-        return '%d kb' % n // 1e3
+        return '%d kb' % (n // 1e3)
     if n < 1e9:
-        return '%d Mb' % n // 1e6
+        return '%d Mb' % (n // 1e6)
     if n < 1e12:
-        return '%d Gb' % n // 1e9
-    return '%d Tb' % n // 1e12
+        return '%d Gb' % (n // 1e9)
+    return '%d Tb' % (n // 1e12)

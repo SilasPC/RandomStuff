@@ -72,6 +72,8 @@ def pack(path):
 
 def unpack(objs,outdir):
 
+    print(objs[:100])
+
     files = 0
     tsize = 0
 
